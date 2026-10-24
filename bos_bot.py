@@ -197,18 +197,8 @@ def send_telegram(text):
         sys.exit(f"Telegram rejected the message (HTTP {e.code}): {reason}")
 
 
-def message(pair, tf, ev, dec):
-    fmt = lambda x: f"{x:.{dec}f}"
-    when = ev["time"].astimezone(IST).strftime("%d %b %H:%M IST")
-    if ev["dir"] == 1:
-        return (f"🟢 {pair} {tf} bullish BOS\n"
-                f"Closed {fmt(ev['close'])} above {fmt(ev['level'])}\n"
-                f"New higher low: {fmt(ev['swing'])}\n"
-                f"Candle closed {when}")
-    return (f"🔴 {pair} {tf} bearish BOS\n"
-            f"Closed {fmt(ev['close'])} below {fmt(ev['level'])}\n"
-            f"New lower high: {fmt(ev['swing'])}\n"
-            f"Candle closed {when}")
+def message(pair, tf, ev):
+    return f"{pair}\n{tf} {'bullish' if ev['dir'] == 1 else 'bearish'} BOS"
 
 
 # ── Main ──────────────────────────────────────────────────────────────────
@@ -243,7 +233,9 @@ def main():
             events, s_high, s_low = find_bos(closed_candles(c15, minutes, now), minutes)
             key = f"{pair}_{tf}"
             if args.levels:
-                last = message(pair, tf, events[-1], dec).replace("\n", " | ") if events else "no BOS yet"
+                e = events[-1] if events else None
+                last = (f"{'bullish' if e['dir'] == 1 else 'bearish'} BOS at {e['level']:.{dec}f}, "
+                        f"candle closed {e['time'].astimezone(IST):%d %b %H:%M} IST") if e else "no BOS yet"
                 fmt = lambda x: "pending" if x is None else f"{x:.{dec}f}"
                 print(f"{pair} {tf}: next BOS high {fmt(s_high)}, next BOS low {fmt(s_low)}\n   last: {last}")
                 continue
@@ -254,7 +246,7 @@ def main():
             last_sent = datetime.fromisoformat(state[key])
             for ev in events:
                 if ev["time"] > last_sent and now - ev["time"] <= MAX_ALERT_AGE:
-                    text = message(pair, tf, ev, dec)
+                    text = message(pair, tf, ev)
                     if args.dry_run:
                         print("ALERT:\n" + text)
                     else:

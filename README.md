@@ -10,10 +10,8 @@ GitHub's scheduler can run a few minutes late.
 Example message:
 
 ```
-🔴 XAUUSD 1H bearish BOS
-Closed 4074.80 below 4082.40
-New lower high: 4118.70
-Candle closed 22 Oct 17:30 IST
+XAUUSD
+1H bearish BOS
 ```
 
 ## One-time setup
