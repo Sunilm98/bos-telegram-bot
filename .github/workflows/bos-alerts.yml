@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       test:
-        description: "Only send a test message to Telegram"
+        description: "Only send a test message (to every channel that is set up)"
         type: boolean
         default: false
 
@@ -34,6 +34,14 @@ jobs:
           TWELVEDATA_API_KEY: ${{ secrets.TWELVEDATA_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          # Optional: email and WhatsApp alerts (each turns on when its secrets are set)
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          WHATSAPP_PHONE: ${{ secrets.WHATSAPP_PHONE }}
+          CALLMEBOT_API_KEY: ${{ secrets.CALLMEBOT_API_KEY }}
         run: |
           if [ "${{ inputs.test }}" = "true" ]; then
             python bos_bot.py --test

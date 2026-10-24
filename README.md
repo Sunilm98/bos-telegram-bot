@@ -1,6 +1,6 @@
 # BOS Telegram bot
 
-Sends a Telegram message when a candle **closes** beyond the current BOS level on
+Sends an alert (Telegram, and optionally email and WhatsApp) when a candle **closes** beyond the current BOS level on
 **XAUUSD** and **GBPUSD**, on **15m, 1H and 4H**. It uses the same rules as the BOS Scanner
 TradingView script ("Gap" mode, at least 2 candles after a high/low).
 
@@ -38,9 +38,42 @@ In the GitHub repository: **Settings → Secrets and variables → Actions → N
 | `TELEGRAM_CHAT_ID` | your chat ID |
 | `TWELVEDATA_API_KEY` | your Twelve Data API key |
 
-### 4. Test
+### 4. Email alerts (optional)
+Uses Gmail by default. Gmail needs an **app password** (your normal password won't work):
+1. Turn on 2-Step Verification for your Google account.
+2. Open **myaccount.google.com/apppasswords**, create one (name it e.g. "BOS bot") and copy the 16-letter password.
+3. Add these GitHub secrets:
+
+| Name | Value |
+|---|---|
+| `SMTP_USER` | your Gmail address (the alert is sent from it) |
+| `SMTP_PASSWORD` | the app password |
+| `EMAIL_TO` | where to send alerts (can be the same address; separate several with commas) |
+
+Other providers: also add `SMTP_HOST` (e.g. `smtp.office365.com`) and `SMTP_PORT` (`465`, or `587`).
+The email subject is the alert itself, e.g. "XAUUSD 1H bearish BOS".
+
+### 5. WhatsApp alerts (optional)
+Uses **CallMeBot**, a free service that sends WhatsApp messages to your own number.
+1. Follow the steps on **callmebot.com → WhatsApp API**: save their number in your contacts and send it
+   the activation message they show. It replies with your **API key** (this can take a few minutes).
+2. Add these GitHub secrets:
+
+| Name | Value |
+|---|---|
+| `WHATSAPP_PHONE` | your number with country code, e.g. `+919876543210` |
+| `CALLMEBOT_API_KEY` | the API key CallMeBot sent you |
+
+CallMeBot is free for personal use, but it's a small free service: it can be slow at times. Keep
+Telegram or email on as well.
+
+Each channel turns on when all of its secrets are set. Telegram is optional too, but at least one channel
+must be set up. If one channel fails, the others still get the alert, and that run shows as failed in
+the Actions tab.
+
+### 6. Test
 **Actions → BOS alerts → Run workflow**, tick **"Only send a test message"** → Run.
-You should get a "BOS bot is connected" message in Telegram.
+You should get a "BOS bot is connected" message on every channel you set up.
 
 Then run it once more **without** the tick. The first normal run only records the latest BOS
 (so you don't get a flood of old ones); alerts start from the next new BOS.

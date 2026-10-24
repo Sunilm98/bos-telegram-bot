@@ -1,26 +1,32 @@
 """BOS alert bot.
 
 Checks each pair on 15m, 1H and 4H after candles close and sends a Telegram message
-when a candle closes beyond the current BOS level. Same rules as bos_scanner.pine
+when a candle closes beyond the current BOS level. It can also send the alert by email and WhatsApp. Same rules as bos_scanner.pine
 ("Gap" mode, at least 2 candles after a high/low).
 
 Usage:
-  python bos_bot.py              check for new BOS and send Telegram alerts
+  python bos_bot.py              check for new BOS and send alerts
   python bos_bot.py --levels     print the current BOS levels and last BOS for each pair/timeframe
-  python bos_bot.py --test       send a test message to Telegram
+  python bos_bot.py --test       send a test message to every channel that is set up
   python bos_bot.py --dry-run    check, but print alerts instead of sending them
   add --source yahoo to use Yahoo Finance data instead of Twelve Data (for local testing; gold is futures there)
 
-Settings come from environment variables: TWELVEDATA_API_KEY, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID.
+Settings come from environment variables: TWELVEDATA_API_KEY, plus at least one alert channel:
+  Telegram:  TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+  Email:     SMTP_USER, SMTP_PASSWORD, EMAIL_TO (comma-separated; optional SMTP_HOST, SMTP_PORT)
+  WhatsApp:  WHATSAPP_PHONE, CALLMEBOT_API_KEY (via callmebot.com)
 """
 import argparse
 import json
 import os
+import smtplib
+import ssl
 import sys
 import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
+from email.message import EmailMessage
 from zoneinfo import ZoneInfo
 
 # ── Settings ──────────────────────────────────────────────────────────────
@@ -177,16 +183,17 @@ def find_bos(candles, minutes):
     return events, s_high, s_low
 
 
-# ── Telegram ──────────────────────────────────────────────────────────────
-def send_telegram(text):
+# ── Alerts ────────────────────────────────────────────────────────────────
+def env(name, default=""):
     # Strip stray spaces/line breaks that often come along when a value is copied and pasted
-    token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
-    chat = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
-    if not token or not chat:
-        sys.exit("TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID must be set")
-    data = urllib.parse.urlencode({"chat_id": chat, "text": text}).encode()
+    return os.environ.get(name, "").strip() or default
+
+
+def send_telegram(text):
+    data = urllib.parse.urlencode({"chat_id": env("TELEGRAM_CHAT_ID"), "text": text}).encode()
     try:
-        with urllib.request.urlopen(f"https://api.telegram.org/bot{token}/sendMessage", data=data, timeout=30) as r:
+        with urllib.request.urlopen(f"https://api.telegram.org/bot{env('TELEGRAM_BOT_TOKEN')}/sendMessage",
+                                    data=data, timeout=30) as r:
             json.load(r)
     except urllib.error.HTTPError as e:
         # Telegram explains the problem in the response body (e.g. "chat not found"); it never contains the token
@@ -194,7 +201,76 @@ def send_telegram(text):
             reason = json.load(e).get("description", "")
         except Exception:
             reason = ""
-        sys.exit(f"Telegram rejected the message (HTTP {e.code}): {reason}")
+        raise RuntimeError(f"rejected the message (HTTP {e.code}): {reason}") from None
+
+
+def send_email(text):
+    msg = EmailMessage()
+    msg["Subject"] = " ".join(text.split("\n")[:2])   # e.g. "XAUUSD 1H bearish BOS"
+    msg["From"] = env("SMTP_USER")
+    msg["To"] = env("EMAIL_TO")
+    msg.set_content(text)
+    host, port = env("SMTP_HOST", "smtp.gmail.com"), int(env("SMTP_PORT", "465"))
+    try:
+        if port == 465:
+            with smtplib.SMTP_SSL(host, port, context=ssl.create_default_context(), timeout=30) as smtp:
+                smtp.login(env("SMTP_USER"), env("SMTP_PASSWORD"))
+                smtp.send_message(msg)
+        else:
+            with smtplib.SMTP(host, port, timeout=30) as smtp:
+                smtp.starttls(context=ssl.create_default_context())
+                smtp.login(env("SMTP_USER"), env("SMTP_PASSWORD"))
+                smtp.send_message(msg)
+    except smtplib.SMTPAuthenticationError:
+        raise RuntimeError("login failed: check SMTP_USER and SMTP_PASSWORD (for Gmail, use an app password)") from None
+
+
+def send_whatsapp(text):
+    q = urllib.parse.urlencode({"phone": env("WHATSAPP_PHONE"), "text": text, "apikey": env("CALLMEBOT_API_KEY")})
+    try:
+        with urllib.request.urlopen(f"https://api.callmebot.com/whatsapp.php?{q}", timeout=30) as r:
+            body = r.read().decode(errors="replace")
+    except urllib.error.HTTPError as e:
+        raise RuntimeError(f"CallMeBot rejected the message (HTTP {e.code})") from None
+    if "invalid" in body.lower():   # CallMeBot answers HTTP 200 even for a wrong key
+        raise RuntimeError("CallMeBot rejected the message: check WHATSAPP_PHONE and CALLMEBOT_API_KEY")
+
+
+# channel name → (send function, environment variables it needs)
+CHANNELS = {
+    "Telegram": (send_telegram, ["TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"]),
+    "Email": (send_email, ["SMTP_USER", "SMTP_PASSWORD", "EMAIL_TO"]),
+    "WhatsApp": (send_whatsapp, ["WHATSAPP_PHONE", "CALLMEBOT_API_KEY"]),
+}
+
+
+def active_channels():
+    active = {}
+    for name, (fn, needs) in CHANNELS.items():
+        have = [n for n in needs if env(n)]
+        if len(have) == len(needs):
+            active[name] = fn
+        elif have:
+            print(f"{name}: skipped, missing {', '.join(n for n in needs if not env(n))}")
+    if not active:
+        sys.exit("No alert channel is set up (see the README for the secrets each one needs)")
+    return active
+
+
+def send_alert(text):
+    """Send to every channel that is set up. Returns False if any failed; exits if all failed (so it retries next run)."""
+    channels = active_channels()
+    errors = []
+    for name, fn in channels.items():
+        try:
+            fn(text)
+        except Exception as e:
+            errors.append(f"{name}: {e}")
+    for err in errors:
+        print(err)
+    if errors and len(errors) == len(channels):
+        sys.exit("Could not send the alert on any channel")
+    return not errors
 
 
 def message(pair, tf, ev):
@@ -213,9 +289,9 @@ def main():
     args = ap.parse_args()
 
     if args.test:
-        send_telegram("✅ BOS bot is connected. You'll get a message here when a candle closes beyond a BOS level.")
-        print("Test message sent")
-        return
+        ok = send_alert("✅ BOS bot is connected. You'll get a message here when a candle closes beyond a BOS level.")
+        print("Test message sent" + ("" if ok else " (some channels failed, see above)"))
+        sys.exit(0 if ok else 1)
 
     state = {}
     if os.path.exists(STATE_FILE):
@@ -252,7 +328,7 @@ def main():
                     if args.dry_run:
                         print("ALERT:\n" + text)
                     else:
-                        send_telegram(text)
+                        failed = not send_alert(text) or failed
                     state[key] = ev["time"].isoformat()
                 elif ev["time"] > last_sent:
                     state[key] = ev["time"].isoformat()
