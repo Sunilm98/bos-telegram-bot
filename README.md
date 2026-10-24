@@ -12,7 +12,9 @@ Example message:
 ```
 XAUUSD
 1H bearish BOS
+22 Oct 2026, 17:30 IST
 ```
+The time is when the breaking candle closed.
 
 ## One-time setup
 

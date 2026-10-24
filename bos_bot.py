@@ -198,7 +198,8 @@ def send_telegram(text):
 
 
 def message(pair, tf, ev):
-    return f"{pair}\n{tf} {'bullish' if ev['dir'] == 1 else 'bearish'} BOS"
+    when = ev["time"].astimezone(IST).strftime("%d %b %Y, %H:%M IST")   # when the breaking candle closed
+    return f"{pair}\n{tf} {'bullish' if ev['dir'] == 1 else 'bearish'} BOS\n{when}"
 
 
 # ── Main ──────────────────────────────────────────────────────────────────
