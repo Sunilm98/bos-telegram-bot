@@ -1,0 +1,51 @@
+name: BOS alerts
+
+on:
+  schedule:
+    # Every 15 minutes, 2 minutes after each 15m candle closes (times are UTC). Saturday is skipped: FX is closed.
+    - cron: "2,17,32,47 * * * 0-5"
+  workflow_dispatch:
+    inputs:
+      test:
+        description: "Only send a test message to Telegram"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write   # to save state.json (which BOS were already sent)
+
+concurrency:
+  group: bos-alerts
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check for new BOS
+        env:
+          TWELVEDATA_API_KEY: ${{ secrets.TWELVEDATA_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          if [ "${{ inputs.test }}" = "true" ]; then
+            python bos_bot.py --test
+          else
+            python bos_bot.py
+          fi
+
+      - name: Save state
+        # Also after a partial failure (e.g. one pair's prices didn't load), so sent alerts aren't sent twice
+        if: ${{ always() && !inputs.test }}
+        run: |
+          git config user.name "bos-bot"
+          git config user.email "bos-bot@users.noreply.github.com"
+          git add state.json
+          git diff --cached --quiet || (git commit -m "Update BOS state" && git push)
