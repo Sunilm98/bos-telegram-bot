@@ -17,6 +17,7 @@ import argparse
 import json
 import os
 import sys
+import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
@@ -48,7 +49,7 @@ def get_json(url):
 
 
 def fetch_twelvedata(symbol):
-    key = os.environ.get("TWELVEDATA_API_KEY")
+    key = os.environ.get("TWELVEDATA_API_KEY", "").strip()
     if not key:
         sys.exit("TWELVEDATA_API_KEY is not set")
     q = urllib.parse.urlencode({"symbol": symbol, "interval": "15min", "outputsize": 5000,
@@ -178,13 +179,22 @@ def find_bos(candles, minutes):
 
 # ── Telegram ──────────────────────────────────────────────────────────────
 def send_telegram(text):
-    token, chat = os.environ.get("TELEGRAM_BOT_TOKEN"), os.environ.get("TELEGRAM_CHAT_ID")
+    # Strip stray spaces/line breaks that often come along when a value is copied and pasted
+    token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+    chat = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
     if not token or not chat:
         sys.exit("TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID must be set")
     data = urllib.parse.urlencode({"chat_id": chat, "text": text}).encode()
-    with urllib.request.urlopen(f"https://api.telegram.org/bot{token}/sendMessage", data=data, timeout=30) as r:
-        if not json.load(r).get("ok"):
-            raise RuntimeError("Telegram did not accept the message")
+    try:
+        with urllib.request.urlopen(f"https://api.telegram.org/bot{token}/sendMessage", data=data, timeout=30) as r:
+            json.load(r)
+    except urllib.error.HTTPError as e:
+        # Telegram explains the problem in the response body (e.g. "chat not found"); it never contains the token
+        try:
+            reason = json.load(e).get("description", "")
+        except Exception:
+            reason = ""
+        sys.exit(f"Telegram rejected the message (HTTP {e.code}): {reason}")
 
 
 def message(pair, tf, ev, dec):
