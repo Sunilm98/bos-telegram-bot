@@ -4,8 +4,9 @@ Sends an alert (Telegram, and optionally email and WhatsApp) when a candle **clo
 **XAUUSD** and **GBPUSD**, on **15m, 1H and 4H**. It uses the same rules as the BOS Scanner
 TradingView script ("Gap" mode, at least 2 candles after a high/low).
 
-It runs on GitHub Actions every 15 minutes (2 minutes after each 15m candle closes), Sunday to Friday.
-GitHub's scheduler can run a few minutes late.
+It runs on GitHub Actions every 15 minutes (2 minutes after each 15m candle closes). GitHub's own
+scheduler often runs hours late or skips runs, so a free timer on cron-job.org starts it on time instead
+(see "On-time runs" below). GitHub's schedule stays on as a backup.
 
 Example message:
 
@@ -87,6 +88,27 @@ you'll get an "XAUUSD 1H bearish BOS" message (it isn't a real signal).
 
 Then run it once more **without** the tick. The first normal run only records the latest BOS
 (so you don't get a flood of old ones); alerts start from the next new BOS.
+
+## On-time runs (cron-job.org)
+GitHub's built-in schedule is "best effort" and can be hours late. cron-job.org (free) asks GitHub to
+start the bot every 15 minutes instead.
+
+1. **GitHub token** — profile picture → **Settings → Developer settings → Personal access tokens →
+   Fine-grained tokens → Generate new token**. Name it `bos-bot timer`, pick the longest expiration,
+   **Only select repositories** → `bos-telegram-bot`, and under Repository permissions set
+   **Actions: Read and write**. Copy the token (`github_pat_…`) with the copy icon.
+2. **cron-job.org** — sign up → **Create cronjob**:
+   - URL: `https://api.github.com/repos/Sunilm98/bos-telegram-bot/actions/workflows/bos-alerts.yml/dispatches`
+   - Schedule: custom, minutes `2,17,32,47`, every hour, every day
+   - Advanced tab:
+     - **Requires HTTP authentication**: on. Username: your GitHub username. Password: the token.
+     - Header: Key `Accept`, Value `application/vnd.github+json`
+     - Request method: **POST**
+     - Request body: `{"ref":"main"}`
+3. **Save → Test run**: it should show **204 No Content**, and a new run appears in the Actions tab.
+
+When the token expires (GitHub emails you first), regenerate it and paste the new one into cron-job.org.
+A run that starts twice (timer and GitHub's schedule) is harmless: the bot remembers what it already sent.
 
 ## Notes
 - **Prices** come from Twelve Data, not FOREX.com, so a level can differ by a few pips/cents from your chart.
