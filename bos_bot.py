@@ -205,24 +205,34 @@ def send_telegram(text):
 
 
 def send_email(text):
+    user, to = env("SMTP_USER"), env("EMAIL_TO")
+    host, port = env("SMTP_HOST", "smtp.gmail.com"), int(env("SMTP_PORT", "465"))
+    password = env("SMTP_PASSWORD")
+    if "gmail" in host:
+        password = "".join(password.split())   # Gmail shows app passwords in groups of 4; the spaces aren't part of it
+    if "@" not in user or "@" not in to:
+        raise RuntimeError("SMTP_USER and EMAIL_TO must be full email addresses")
     msg = EmailMessage()
     msg["Subject"] = " ".join(text.split("\n")[:2])   # e.g. "XAUUSD 1H bearish BOS"
-    msg["From"] = env("SMTP_USER")
-    msg["To"] = env("EMAIL_TO")
+    msg["From"] = user
+    msg["To"] = to
     msg.set_content(text)
-    host, port = env("SMTP_HOST", "smtp.gmail.com"), int(env("SMTP_PORT", "465"))
+    step = f"connecting to {host}:{port}"
     try:
-        if port == 465:
-            with smtplib.SMTP_SSL(host, port, context=ssl.create_default_context(), timeout=30) as smtp:
-                smtp.login(env("SMTP_USER"), env("SMTP_PASSWORD"))
-                smtp.send_message(msg)
-        else:
-            with smtplib.SMTP(host, port, timeout=30) as smtp:
+        smtp = (smtplib.SMTP_SSL(host, port, context=ssl.create_default_context(), timeout=30) if port == 465
+                else smtplib.SMTP(host, port, timeout=30))
+        with smtp:
+            if port != 465:
                 smtp.starttls(context=ssl.create_default_context())
-                smtp.login(env("SMTP_USER"), env("SMTP_PASSWORD"))
-                smtp.send_message(msg)
-    except smtplib.SMTPAuthenticationError:
-        raise RuntimeError("login failed: check SMTP_USER and SMTP_PASSWORD (for Gmail, use an app password)") from None
+            step = "logging in"
+            smtp.login(user, password)
+            step = "sending"
+            smtp.send_message(msg)
+    except smtplib.SMTPAuthenticationError as e:
+        raise RuntimeError(f"login failed ({e.smtp_code}): check SMTP_USER and SMTP_PASSWORD "
+                           "(for Gmail, use an app password)") from None
+    except Exception as e:
+        raise RuntimeError(f"failed while {step}: {type(e).__name__}: {e}") from None
 
 
 def send_whatsapp(text):
