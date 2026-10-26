@@ -232,7 +232,13 @@ def send_email(text):
         raise RuntimeError(f"login failed ({e.smtp_code}): check SMTP_USER and SMTP_PASSWORD "
                            "(for Gmail, use an app password)") from None
     except Exception as e:
-        raise RuntimeError(f"failed while {step}: {type(e).__name__}: {e}") from None
+        hint = ""
+        if step == "logging in" and "gmail" in host:
+            # Clues for a refused login, without showing the secrets themselves
+            hint = (f" [SMTP_USER is a gmail.com address: {'yes' if user.lower().endswith(('@gmail.com', '@googlemail.com')) else 'no'};"
+                    f" password is {len(password)} characters (a Gmail app password is 16 letters);"
+                    f" plain letters only: {'yes' if password.isascii() and password.isalpha() else 'no'}]")
+        raise RuntimeError(f"failed while {step}: {type(e).__name__}: {e}{hint}") from None
 
 
 def send_whatsapp(text):
