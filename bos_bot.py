@@ -230,8 +230,14 @@ def send_email(text):
             step = "sending"
             smtp.send_message(msg)
     except smtplib.SMTPAuthenticationError as e:
+        hint = ""
+        if "brevo" in host:
+            # Clues without showing the secrets: Brevo's SMTP login and SMTP key have fixed shapes
+            hint = (f" [SMTP_USER is a Brevo SMTP login (…@smtp-brevo.com): {'yes' if user.lower().endswith('@smtp-brevo.com') else 'no'};"
+                    f" SMTP_PASSWORD is an SMTP key (xsmtpsib-…): {'yes' if password.startswith('xsmtpsib-') else 'no'}"
+                    f"{' (it looks like an API key, xkeysib-…)' if password.startswith('xkeysib-') else ''}]")
         raise RuntimeError(f"login failed ({e.smtp_code}): check SMTP_USER and SMTP_PASSWORD "
-                           "(for Gmail, use an app password)") from None
+                           f"(for Gmail, use an app password){hint}") from None
     except Exception as e:
         hint = ""
         if step == "logging in" and "gmail" in host:
