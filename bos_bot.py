@@ -8,6 +8,7 @@ Usage:
   python bos_bot.py              check for new BOS and send alerts
   python bos_bot.py --levels     print the current BOS levels and last BOS for each pair/timeframe
   python bos_bot.py --test       send a test message to every channel that is set up
+  python bos_bot.py --sample     send a made-up alert, worded exactly like a real one, to every channel
   python bos_bot.py --dry-run    check, but print alerts instead of sending them
   add --source yahoo to use Yahoo Finance data instead of Twelve Data (for local testing; gold is futures there)
 
@@ -309,11 +310,19 @@ def main():
     ap.add_argument("--dry-run", action="store_true", help="print alerts instead of sending them")
     ap.add_argument("--levels", action="store_true", help="print current BOS levels and exit")
     ap.add_argument("--test", action="store_true", help="send a test message and exit")
+    ap.add_argument("--sample", action="store_true", help="send a made-up alert, worded like a real one, and exit")
     args = ap.parse_args()
 
     if args.test:
         ok = send_alert("✅ BOS bot is connected. You'll get a message here when a candle closes beyond a BOS level.")
         print("Test message sent" + ("" if ok else " (some channels failed, see above)"))
+        sys.exit(0 if ok else 1)
+
+    if args.sample:
+        # A bearish 1H BOS on the last closed hour, so the message looks exactly like a real alert
+        last_hour = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+        ok = send_alert(message("XAUUSD", "1H", {"dir": -1, "time": last_hour}))
+        print("Sample alert sent" + ("" if ok else " (some channels failed, see above)"))
         sys.exit(0 if ok else 1)
 
     state = {}

@@ -82,6 +82,8 @@ the Actions tab.
 ### 6. Test
 **Actions → BOS alerts → Run workflow**, tick **"Only send a test message"** → Run.
 You should get a "BOS bot is connected" message on every channel you set up.
+To see what a real alert looks like, run it again with **"Only send a made-up alert"** ticked instead:
+you'll get an "XAUUSD 1H bearish BOS" message (it isn't a real signal).
 
 Then run it once more **without** the tick. The first normal run only records the latest BOS
 (so you don't get a flood of old ones); alerts start from the next new BOS.
