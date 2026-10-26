@@ -13,7 +13,7 @@ Usage:
 
 Settings come from environment variables: TWELVEDATA_API_KEY, plus at least one alert channel:
   Telegram:  TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
-  Email:     SMTP_USER, SMTP_PASSWORD, EMAIL_TO (comma-separated; optional SMTP_HOST, SMTP_PORT)
+  Email:     SMTP_USER, SMTP_PASSWORD, EMAIL_TO (comma-separated; optional SMTP_HOST, SMTP_PORT, EMAIL_FROM)
   WhatsApp:  WHATSAPP_PHONE, CALLMEBOT_API_KEY (via callmebot.com)
 """
 import argparse
@@ -206,15 +206,16 @@ def send_telegram(text):
 
 def send_email(text):
     user, to = env("SMTP_USER"), env("EMAIL_TO")
+    sender = env("EMAIL_FROM", user)   # e.g. Brevo: the login isn't an email you can send from
     host, port = env("SMTP_HOST", "smtp.gmail.com"), int(env("SMTP_PORT", "465"))
     password = env("SMTP_PASSWORD")
     if "gmail" in host:
         password = "".join(password.split())   # Gmail shows app passwords in groups of 4; the spaces aren't part of it
-    if "@" not in user or "@" not in to:
-        raise RuntimeError("SMTP_USER and EMAIL_TO must be full email addresses")
+    if "@" not in sender or "@" not in to:
+        raise RuntimeError("EMAIL_FROM (or SMTP_USER) and EMAIL_TO must be full email addresses")
     msg = EmailMessage()
     msg["Subject"] = " ".join(text.split("\n")[:2])   # e.g. "XAUUSD 1H bearish BOS"
-    msg["From"] = user
+    msg["From"] = sender
     msg["To"] = to
     msg.set_content(text)
     step = f"connecting to {host}:{port}"

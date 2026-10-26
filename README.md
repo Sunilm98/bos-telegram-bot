@@ -39,19 +39,27 @@ In the GitHub repository: **Settings → Secrets and variables → Actions → N
 | `TWELVEDATA_API_KEY` | your Twelve Data API key |
 
 ### 4. Email alerts (optional)
-Uses Gmail by default. Gmail needs an **app password** (your normal password won't work):
-1. Turn on 2-Step Verification for your Google account.
-2. Open **myaccount.google.com/apppasswords**, create one (name it e.g. "BOS bot") and copy the 16-letter password.
-3. Add these GitHub secrets:
+Uses **Brevo** (free: 300 emails a day), which is made for automated email. Gmail often refuses
+sign-ins from GitHub's servers, so it's not used by default.
+1. Sign up at **brevo.com** (free plan) and confirm your email address.
+2. Go to **Settings → SMTP & API → SMTP** (top-right menu → *SMTP & API*). Click **Generate a new SMTP key**,
+   name it "BOS bot" and copy the key (it starts with `xsmtpsib-`). Brevo shows it only once.
+3. On the same page, note the **Login** (looks like `8a1b2c001@smtp-brevo.com`).
+4. Add these GitHub secrets:
 
 | Name | Value |
 |---|---|
-| `SMTP_USER` | your Gmail address (the alert is sent from it) |
-| `SMTP_PASSWORD` | the app password |
+| `SMTP_HOST` | `smtp-relay.brevo.com` |
+| `SMTP_USER` | the Brevo **Login** |
+| `SMTP_PASSWORD` | the Brevo **SMTP key** |
+| `EMAIL_FROM` | the email you signed up to Brevo with (Brevo only sends from verified addresses) |
 | `EMAIL_TO` | where to send alerts (can be the same address; separate several with commas) |
 
-Other providers: also add `SMTP_HOST` (e.g. `smtp.office365.com`) and `SMTP_PORT` (`465`, or `587`).
-The email subject is the alert itself, e.g. "XAUUSD 1H bearish BOS".
+The email subject is the alert itself, e.g. "XAUUSD 1H bearish BOS". The first one may land in spam:
+mark it **Not spam** so later ones arrive in your inbox.
+
+Other providers work too: set `SMTP_HOST` and, if needed, `SMTP_PORT` (`465`, the default, or `587`).
+With Gmail, leave `SMTP_HOST` unset and use an app password (myaccount.google.com/apppasswords).
 
 ### 5. WhatsApp alerts (optional)
 Uses **CallMeBot**, a free service that sends WhatsApp messages to your own number.
