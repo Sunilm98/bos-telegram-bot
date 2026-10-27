@@ -350,6 +350,9 @@ def main():
                         f"candle closed {e['time'].astimezone(IST):%d %b %H:%M} IST") if e else "no BOS yet"
                 fmt = lambda x: "pending" if x is None else f"{x:.{dec}f}"
                 print(f"{pair} {tf}: next BOS high {fmt(s_high)}, next BOS low {fmt(s_low)}\n   last: {last}")
+                for e in events[-8:-1][::-1]:   # the BOS before that, newest first, to compare with a chart
+                    print(f"   before: {'bullish' if e['dir'] == 1 else 'bearish'} BOS at {e['level']:.{dec}f}, "
+                          f"candle closed {e['time'].astimezone(IST):%d %b %H:%M} IST")
                 continue
             if key not in state:
                 # First run: remember the latest BOS without alerting on old ones
