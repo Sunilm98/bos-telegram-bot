@@ -297,10 +297,11 @@ def send_alert(text):
     return not errors
 
 
-def message(pair, tf, ev):
+def message(pair, tfs, ev):
+    """tfs: the timeframes that broke on this candle close, e.g. ["15m", "1H"] → "15m + 1H bullish BOS"."""
     t = ev["time"].astimezone(IST)   # when the breaking candle closed
     when = f"{t:%d %b %Y}, {t.hour % 12 or 12}:{t:%M %p} IST"
-    return f"{pair}\n{tf} {'bullish' if ev['dir'] == 1 else 'bearish'} BOS\n{when}"
+    return f"{pair}\n{' + '.join(tfs)} {'bullish' if ev['dir'] == 1 else 'bearish'} BOS\n{when}"
 
 
 # ── Main ──────────────────────────────────────────────────────────────────
@@ -321,7 +322,7 @@ def main():
     if args.sample:
         # A bearish 1H BOS on the last closed hour, so the message looks exactly like a real alert
         last_hour = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
-        ok = send_alert(message("XAUUSD", "1H", {"dir": -1, "time": last_hour}))
+        ok = send_alert(message("XAUUSD", ["1H"], {"dir": -1, "time": last_hour}))
         print("Sample alert sent" + ("" if ok else " (some channels failed, see above)"))
         sys.exit(0 if ok else 1)
 
@@ -339,6 +340,7 @@ def main():
             print(f"{pair}: could not fetch prices: {e}")
             failed = True
             continue
+        new = {}   # (close time, direction) → timeframes that broke then, so one candle close gives one message
         for tf, minutes in TIMEFRAMES.items():
             events, s_high, s_low = find_bos(closed_candles(c15, minutes, now), minutes)
             key = f"{pair}_{tf}"
@@ -356,14 +358,15 @@ def main():
             last_sent = datetime.fromisoformat(state[key])
             for ev in events:
                 if ev["time"] > last_sent and now - ev["time"] <= MAX_ALERT_AGE:
-                    text = message(pair, tf, ev)
-                    if args.dry_run:
-                        print("ALERT:\n" + text)
-                    else:
-                        failed = not send_alert(text) or failed
+                    new.setdefault((ev["time"], ev["dir"]), []).append(tf)
+                if ev["time"] > last_sent:
                     state[key] = ev["time"].isoformat()
-                elif ev["time"] > last_sent:
-                    state[key] = ev["time"].isoformat()
+        for (t, d), tfs in sorted(new.items()):
+            text = message(pair, tfs, {"time": t, "dir": d})
+            if args.dry_run:
+                print("ALERT:\n" + text)
+            else:
+                failed = not send_alert(text) or failed
 
     if not args.levels and not args.dry_run:
         with open(STATE_FILE, "w") as f:

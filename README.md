@@ -15,7 +15,8 @@ XAUUSD
 1H bearish BOS
 22 Oct 2026, 5:30 PM IST
 ```
-The time is when the breaking candle closed.
+The time is when the breaking candle closed. When several timeframes break on the same candle close, they share one message,
+e.g. "15m + 1H bearish BOS".
 
 ## One-time setup
 
@@ -85,6 +86,8 @@ the Actions tab.
 You should get a "BOS bot is connected" message on every channel you set up.
 To see what a real alert looks like, run it again with **"Only send a made-up alert"** ticked instead:
 you'll get an "XAUUSD 1H bearish BOS" message (it isn't a real signal).
+Tick **"Only show the current BOS levels"** to see the bot's levels for each pair and timeframe in the
+run's log (open the run → *scan* → *Check for new BOS*). Nothing is sent.
 
 Then run it once more **without** the tick. The first normal run only records the latest BOS
 (so you don't get a flood of old ones); alerts start from the next new BOS.

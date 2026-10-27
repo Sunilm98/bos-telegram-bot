@@ -14,6 +14,10 @@ on:
         description: "Only send a made-up alert, worded exactly like a real one"
         type: boolean
         default: false
+      levels:
+        description: "Only show the current BOS levels (in the run's log, nothing is sent)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write   # to save state.json (which BOS were already sent)
@@ -52,13 +56,15 @@ jobs:
             python bos_bot.py --test
           elif [ "${{ inputs.sample }}" = "true" ]; then
             python bos_bot.py --sample
+          elif [ "${{ inputs.levels }}" = "true" ]; then
+            python bos_bot.py --levels
           else
             python bos_bot.py
           fi
 
       - name: Save state
         # Also after a partial failure (e.g. one pair's prices didn't load), so sent alerts aren't sent twice
-        if: ${{ always() && !inputs.test && !inputs.sample }}
+        if: ${{ always() && !inputs.test && !inputs.sample && !inputs.levels }}
         run: |
           git config user.name "bos-bot"
           git config user.email "bos-bot@users.noreply.github.com"
