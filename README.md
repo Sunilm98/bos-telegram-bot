@@ -2,7 +2,7 @@
 
 Sends an alert (Telegram, and optionally email and WhatsApp) when a candle **closes** beyond the current BOS level on
 **XAUUSD** and **GBPUSD**, on **15m, 1H and 4H**. It uses the same rules as the BOS Scanner
-TradingView script ("Gap" mode, at least 2 candles after a high/low).
+TradingView script ("Gap" mode, at least 3 candles after a high/low and a pullback of at least 1 × ATR 14).
 
 It runs on GitHub Actions every 15 minutes (2 minutes after each 15m candle closes). GitHub's own
 scheduler often runs hours late or skips runs, so a free timer on cron-job.org starts it on time instead

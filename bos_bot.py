@@ -2,7 +2,7 @@
 
 Checks each pair on 15m, 1H and 4H after candles close and sends a Telegram message
 when a candle closes beyond the current BOS level. It can also send the alert by email and WhatsApp. Same rules as bos_scanner.pine
-("Gap" mode, at least 2 candles after a high/low).
+("Gap" mode, at least 3 candles after a high/low and a pullback of at least 1 × ATR 14).
 
 Usage:
   python bos_bot.py              check for new BOS and send alerts
@@ -37,7 +37,8 @@ PAIRS = {
     "GBPUSD": ("GBP/USD", "GBPUSD=X", 5),
 }
 TIMEFRAMES = {"15m": 15, "1H": 60, "4H": 240}
-MIN_AFTER = 2        # candles that must close after a high/low before it counts (with the gap)
+MIN_AFTER = 3        # candles that must close after a high/low before it counts (with the gap)
+MIN_PULL_ATR = 1.0   # price must also pull back this many ATR(14) from the high/low, on candles after it
 SEED_LEN = 5         # swing length for the starting levels, before the first BOS
 MAX_ALERT_AGE = timedelta(hours=12)   # never alert on a BOS older than this (e.g. after a long outage)
 
@@ -108,9 +109,18 @@ def find_bos(candles, minutes):
     n = len(candles)
     close_time = lambda i: candles[i][0] + timedelta(minutes=minutes)
 
+    # ATR 14 the way TradingView's ta.atr works: Wilder's average of the true range, starting from a plain average
+    tr_ = [H[i] - L[i] if i == 0 else max(H[i] - L[i], abs(H[i] - C[i - 1]), abs(L[i] - C[i - 1])) for i in range(n)]
+    atr = [None] * n
+    if n >= 14:
+        atr[13] = sum(tr_[:14]) / 14
+        for i in range(14, n):
+            atr[i] = (atr[i - 1] * 13 + tr_[i]) / 14
+
     s_high = s_high_bar = s_low = s_low_bar = None
     hi_pending = lo_pending = False
     p_high = p_high_bar = p_low = p_low_bar = None
+    pull_low = pull_high = None   # lowest low / highest high AFTER the pending high / low
     hi_gap = lo_gap = False
     started = False
     events = []
@@ -133,22 +143,28 @@ def find_bos(candles, minutes):
             if pl is not None:
                 s_low, s_low_bar = pl, i - SEED_LEN
 
-        # Confirm the pending high/low: a gap (wick poking past the previous candle) and at least MIN_AFTER candles
+        # Confirm the pending high/low: a gap (wick poking past the previous candle), at least MIN_AFTER candles,
+        # and a pullback of at least MIN_PULL_ATR × ATR measured only on candles after the high/low
+        a = atr[i]
         if hi_pending:
             if H[i] > p_high:
-                p_high, p_high_bar, hi_gap = H[i], i, False
+                p_high, p_high_bar, pull_low, hi_gap = H[i], i, H[i], False
             else:
-                if L[i] < L[i - 1] and i - 1 >= p_high_bar:
+                pull_low = min(pull_low, L[i])
+                if a is not None and L[i] < L[i - 1] and i - 1 >= p_high_bar:
                     hi_gap = True
-                if hi_gap and i - p_high_bar >= MIN_AFTER:
+                deep = a is not None and p_high - pull_low >= MIN_PULL_ATR * a
+                if hi_gap and i - p_high_bar >= MIN_AFTER and deep:
                     hi_pending, s_high, s_high_bar = False, p_high, p_high_bar
         if lo_pending:
             if L[i] < p_low:
-                p_low, p_low_bar, lo_gap = L[i], i, False
+                p_low, p_low_bar, pull_high, lo_gap = L[i], i, L[i], False
             else:
-                if H[i] > H[i - 1] and i - 1 >= p_low_bar:
+                pull_high = max(pull_high, H[i])
+                if a is not None and H[i] > H[i - 1] and i - 1 >= p_low_bar:
                     lo_gap = True
-                if lo_gap and i - p_low_bar >= MIN_AFTER:
+                deep = a is not None and pull_high - p_low >= MIN_PULL_ATR * a
+                if lo_gap and i - p_low_bar >= MIN_AFTER and deep:
                     lo_pending, s_low, s_low_bar = False, p_low, p_low_bar
 
         # Bullish BOS: candle closes above the structure high
@@ -164,7 +180,8 @@ def find_bos(candles, minutes):
                 if H[j] > H[pk]:
                     pk = j
             p_high, p_high_bar, hi_pending, started = H[pk], pk, True, True
-            hi_gap = any(L[k] < L[k - 1] for k in range(pk + 1, i + 1))
+            pull_low = min([H[pk]] + L[pk + 1:i + 1])
+            hi_gap = a is not None and any(L[k] < L[k - 1] for k in range(pk + 1, i + 1))
 
         # Bearish BOS: candle closes below the structure low
         if s_low is not None and C[i] < s_low:
@@ -179,7 +196,8 @@ def find_bos(candles, minutes):
                 if L[j] < L[tr]:
                     tr = j
             p_low, p_low_bar, lo_pending, started = L[tr], tr, True, True
-            lo_gap = any(H[k] > H[k - 1] for k in range(tr + 1, i + 1))
+            pull_high = max([L[tr]] + H[tr + 1:i + 1])
+            lo_gap = a is not None and any(H[k] > H[k - 1] for k in range(tr + 1, i + 1))
 
     return events, s_high, s_low
 
