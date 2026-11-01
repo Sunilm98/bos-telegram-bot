@@ -1,8 +1,11 @@
 # BOS Telegram bot
 
-Sends an alert (Telegram, and optionally email and WhatsApp) when a candle **closes** beyond the current BOS level on
-**XAUUSD** and **GBPUSD**, on **15m, 1H and 4H**. It uses the same rules as the BOS Scanner
-TradingView script ("Gap" mode, at least 3 candles after a high/low and a pullback of at least 1 × ATR 14).
+Sends an alert (Telegram, and optionally email and WhatsApp) when **2 candles in a row close** beyond the current BOS
+level on **XAUUSD** and **GBPUSD**, on **15m, 1H and 4H**. The BOS levels follow the same rules as the BOS Scanner
+TradingView script ("Gap" mode, at least 3 candles after a high/low and a pullback of at least 1 × ATR 14), where one
+close beyond the level is a BOS; the bot then waits for the next candle to also close beyond that level before
+alerting. If the next candle closes back inside, there's no alert (the chart still shows that BOS).
+To change how many closes are needed, edit `CONFIRM_CANDLES` in `bos_bot.py` (1 = alert on the first close).
 
 It runs on GitHub Actions every 15 minutes (2 minutes after each 15m candle closes). GitHub's own
 scheduler often runs hours late or skips runs, so a free timer on cron-job.org starts it on time instead
@@ -15,7 +18,8 @@ XAUUSD
 1H bearish BOS
 22 Oct 2026, 5:30 PM IST
 ```
-The time is when the breaking candle closed. When several timeframes break on the same candle close, they share one message,
+The time is when the second (confirming) candle closed. When several timeframes confirm on the same candle close, they
+share one message,
 e.g. "15m + 1H bearish BOS".
 
 ## One-time setup
