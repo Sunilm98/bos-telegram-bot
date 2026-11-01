@@ -1,7 +1,7 @@
 """BOS alert bot.
 
 Checks each pair on 15m, 1H and 4H after candles close and sends a Telegram message
-when a candle closes beyond the current BOS level and the next candle closes beyond it too. It can also send the alert by email and WhatsApp. Same rules as bos_scanner.pine
+when a candle closes beyond the current BOS level. It can also send the alert by email and WhatsApp. Same rules as bos_scanner.pine
 ("Gap" mode, at least 3 candles after a high/low and a pullback of at least 1 × ATR 14).
 
 Usage:
@@ -40,8 +40,6 @@ TIMEFRAMES = {"15m": 15, "1H": 60, "4H": 240}
 MIN_AFTER = 3        # candles that must close after a high/low before it counts (with the gap)
 MIN_PULL_ATR = 1.0   # price must also pull back this many ATR(14) from the high/low, on candles after it
 SEED_LEN = 5         # swing length for the starting levels, before the first BOS
-CONFIRM_CANDLES = 2  # alert only when this many candles in a row close beyond the BOS level (the levels themselves
-                     # still follow the TradingView script, where 1 close is a BOS)
 MAX_ALERT_AGE = timedelta(hours=12)   # never alert on a BOS older than this (e.g. after a long outage)
 
 STATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "state.json")
@@ -175,7 +173,7 @@ def find_bos(candles, minutes):
             for j in range(i - 1, s_high_bar, -1):   # the high candle itself is skipped
                 if L[j] < lo:
                     lo, lo_bar = L[j], j
-            events.append({"dir": 1, "level": s_high, "close": C[i], "swing": lo, "time": close_time(i), "bar": i})
+            events.append({"dir": 1, "level": s_high, "close": C[i], "swing": lo, "time": close_time(i)})
             s_low, s_low_bar, lo_pending, s_high = lo, lo_bar, False, None
             pk = i
             for j in range(i - 1, lo_bar - 1, -1):
@@ -191,7 +189,7 @@ def find_bos(candles, minutes):
             for j in range(i - 1, s_low_bar, -1):    # the low candle itself is skipped
                 if H[j] > hi:
                     hi, hi_bar = H[j], j
-            events.append({"dir": -1, "level": s_low, "close": C[i], "swing": hi, "time": close_time(i), "bar": i})
+            events.append({"dir": -1, "level": s_low, "close": C[i], "swing": hi, "time": close_time(i)})
             s_high, s_high_bar, hi_pending, s_low = hi, hi_bar, False, None
             tr = i
             for j in range(i - 1, hi_bar - 1, -1):
@@ -200,18 +198,6 @@ def find_bos(candles, minutes):
             p_low, p_low_bar, lo_pending, started = L[tr], tr, True, True
             pull_high = max([L[tr]] + H[tr + 1:i + 1])
             lo_gap = a is not None and any(H[k] > H[k - 1] for k in range(tr + 1, i + 1))
-
-    # When is each BOS confirmed for an alert: the next CONFIRM_CANDLES - 1 candles must also close beyond its level.
-    # "alert_time" is when the last of those closed; None if one closed back inside ("failed") or hasn't closed yet
-    for ev in events:
-        last = ev["bar"] + CONFIRM_CANDLES - 1
-        beyond = lambda j: C[j] > ev["level"] if ev["dir"] == 1 else C[j] < ev["level"]
-        if not all(beyond(j) for j in range(ev["bar"] + 1, min(last, n - 1) + 1)):
-            ev["alert_time"], ev["status"] = None, "failed"
-        elif last >= n:
-            ev["alert_time"], ev["status"] = None, "waiting"
-        else:
-            ev["alert_time"], ev["status"] = close_time(last), "confirmed"
 
     return events, s_high, s_low
 
@@ -331,7 +317,7 @@ def send_alert(text):
 
 def message(pair, tfs, ev):
     """tfs: the timeframes that broke on this candle close, e.g. ["15m", "1H"] → "15m + 1H bullish BOS"."""
-    t = ev["time"].astimezone(IST)   # when the confirming candle closed
+    t = ev["time"].astimezone(IST)   # when the breaking candle closed
     when = f"{t:%d %b %Y}, {t.hour % 12 or 12}:{t:%M %p} IST"
     return f"{pair}\n{' + '.join(tfs)} {'bullish' if ev['dir'] == 1 else 'bearish'} BOS\n{when}"
 
@@ -347,7 +333,7 @@ def main():
     args = ap.parse_args()
 
     if args.test:
-        ok = send_alert("✅ BOS bot is connected. You'll get a message here when 2 candles in a row close beyond a BOS level.")
+        ok = send_alert("✅ BOS bot is connected. You'll get a message here when a candle closes beyond a BOS level.")
         print("Test message sent" + ("" if ok else " (some channels failed, see above)"))
         sys.exit(0 if ok else 1)
 
@@ -378,29 +364,24 @@ def main():
             key = f"{pair}_{tf}"
             if args.levels:
                 e = events[-1] if events else None
-                note = {"confirmed": "alerted when the next candle also closed beyond",
-                        "failed": "no alert: the next candle closed back inside",
-                        "waiting": "alert waits for the next candle's close"}
-                desc = lambda e: (f"{'bullish' if e['dir'] == 1 else 'bearish'} BOS at {e['level']:.{dec}f}, "
-                                  f"candle closed {e['time'].astimezone(IST):%d %b %H:%M} IST ({note[e['status']]})")
-                last = desc(e) if e else "no BOS yet"
+                last = (f"{'bullish' if e['dir'] == 1 else 'bearish'} BOS at {e['level']:.{dec}f}, "
+                        f"candle closed {e['time'].astimezone(IST):%d %b %H:%M} IST") if e else "no BOS yet"
                 fmt = lambda x: "pending" if x is None else f"{x:.{dec}f}"
                 print(f"{pair} {tf}: next BOS high {fmt(s_high)}, next BOS low {fmt(s_low)}\n   last: {last}")
                 for e in events[-8:-1][::-1]:   # the BOS before that, newest first, to compare with a chart
-                    print(f"   before: {desc(e)}")
+                    print(f"   before: {'bullish' if e['dir'] == 1 else 'bearish'} BOS at {e['level']:.{dec}f}, "
+                          f"candle closed {e['time'].astimezone(IST):%d %b %H:%M} IST")
                 continue
-            confirmed = [ev for ev in events if ev["alert_time"]]
             if key not in state:
                 # First run: remember the latest BOS without alerting on old ones
-                state[key] = confirmed[-1]["alert_time"].isoformat() if confirmed else now.isoformat()
+                state[key] = events[-1]["time"].isoformat() if events else now.isoformat()
                 continue
             last_sent = datetime.fromisoformat(state[key])
-            for ev in confirmed:
-                # The break itself must be newer too, so a BOS alerted before this rule existed isn't sent again
-                if ev["time"] > last_sent and ev["alert_time"] > last_sent:
-                    if now - ev["alert_time"] <= MAX_ALERT_AGE:
-                        new.setdefault((ev["alert_time"], ev["dir"]), []).append(tf)
-                    state[key] = ev["alert_time"].isoformat()
+            for ev in events:
+                if ev["time"] > last_sent and now - ev["time"] <= MAX_ALERT_AGE:
+                    new.setdefault((ev["time"], ev["dir"]), []).append(tf)
+                if ev["time"] > last_sent:
+                    state[key] = ev["time"].isoformat()
         for (t, d), tfs in sorted(new.items()):
             text = message(pair, tfs, {"time": t, "dir": d})
             if args.dry_run:
