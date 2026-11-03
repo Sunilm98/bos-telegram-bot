@@ -83,9 +83,17 @@ def fetch_yahoo(symbol):
     return out
 
 
+def market_open(start):
+    """FX trades from Sunday 17:00 to Friday 17:00 New York time. Twelve Data still sends weekend candles,
+    which FOREX.com/TradingView don't have; they create fake BOS and shift the structure after them."""
+    local = start.astimezone(NY)
+    wd = local.weekday()   # Monday = 0 … Sunday = 6
+    return not (wd == 5 or (wd == 4 and local.hour >= 17) or (wd == 6 and local.hour < 17))
+
+
 def closed_candles(c15, minutes, now):
     """Build candles of `minutes` from 15m candles, aligned like TradingView FX charts. Only fully closed candles."""
-    c15 = sorted(c for c in c15 if c[0] + timedelta(minutes=15) <= now)
+    c15 = sorted(c for c in c15 if c[0] + timedelta(minutes=15) <= now and market_open(c[0]))
     if minutes == 15:
         return c15
     out = []
